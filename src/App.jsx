@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { dbLoad, dbSave } from "./supabase.js";
+import { dbLoad, dbSave, signOut } from "./supabase.js";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, XAxis, YAxis } from "recharts";
 import { ComposedChart, Line, Legend } from "recharts";
 
@@ -201,17 +201,18 @@ const css = `
 `;
 
 const NAV = [
-  { id: "dashboard",    label: "Dashboard",      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
-  { id: "fluxo",        label: "Fluxo Mensal",   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
-  { id: "lancamentos",  label: "Lançamentos",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> },
-  { id: "installments", label: "Parcelamentos",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> },
-  { id: "fixed",        label: "Despesas Fixas", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
-  { id: "goals",        label: "Metas",          icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> },
-  { id: "investimentos",label: "Investimentos",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
-  { id: "projecao",     label: "Projeção Anual", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+  { id: "dashboard",      label: "Dashboard",      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+  { id: "fluxo",          label: "Fluxo Mensal",   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
+  { id: "lancamentos",    label: "Lançamentos",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> },
+  { id: "installments",   label: "Parcelamentos",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> },
+  { id: "fixed",          label: "Despesas Fixas", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
+  { id: "goals",          label: "Metas",          icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> },
+  { id: "investimentos",  label: "Investimentos",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
+  { id: "projecao",       label: "Projeção Anual", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+  { id: "configuracoes",  label: "Configurações",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
 ];
 
-export default function App() {
+export default function App({ user, onSignOut }) {
   const [tab, setTab] = useState("dashboard");
   const [installments, setInstallments] = useState([]);
   const [fixedExpenses, setFixedExpenses] = useState([]);
@@ -297,8 +298,11 @@ export default function App() {
               {new Date().toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long", year:"numeric" })}
             </p>
           </div>
-          <div style={{ width: 34, height: 34, borderRadius:"50%", background: ACCENT, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            {user && <p style={{ fontSize:12, color:"#94A3B8" }}>{user.email}</p>}
+            <div style={{ width: 34, height: 34, borderRadius:"50%", background: ACCENT, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }} onClick={() => setTab("configuracoes")}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
           </div>
         </div>
 
@@ -310,6 +314,7 @@ export default function App() {
           {tab === "goals" && <GoalsTab items={goals} onChange={updGoals} />}
           {tab === "fluxo" && <FluxoMensalTab installments={installments} fixedExpenses={fixedExpenses} goals={goals} settings={settings} transactions={transactions} commitments={commitments || []} />}
           {tab === "projecao" && <ProjecaoAnualTab installments={installments} fixedExpenses={fixedExpenses} goals={goals} settings={settings} />}
+          {tab === "configuracoes" && <ConfiguracoesTab settings={settings} onSave={updSettings} user={user} onSignOut={async () => { await signOut(); onSignOut(); }} />}
           {tab === "investimentos" && <InvestimentosTab items={investments} onChange={updInvestments} />}
         </div>
       </div>
@@ -2461,6 +2466,110 @@ function InvCard({ item, color, onEdit, onRemove, onDeposit }) {
         <button className="btn-ghost" onClick={() => { setDepositing(true); setDepositVal(""); }}>+ Aportar</button>
         <button className="btn-ghost" onClick={onEdit}>Editar</button>
         <button className="btn-danger" onClick={onRemove}>Remover</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
+
+function ConfiguracoesTab({ settings, onSave, user, onSignOut }) {
+  const [cards, setCards] = useState({
+    Santander:    { closing: settings.cardClosing?.Santander    || 1,  due: settings.cardDue?.Santander    || 8  },
+    Nubank:       { closing: settings.cardClosing?.Nubank       || 2,  due: settings.cardDue?.Nubank       || 9  },
+    "Nubank PJ":  { closing: settings.cardClosing?.["Nubank PJ"]|| 2,  due: settings.cardDue?.["Nubank PJ"]|| 9  },
+    "Will Bank":  { closing: settings.cardClosing?.["Will Bank"]|| 8,  due: settings.cardDue?.["Will Bank"]|| 15 },
+    "Mercado Pago":{ closing: settings.cardClosing?.["Mercado Pago"]||5, due: settings.cardDue?.["Mercado Pago"]||12},
+    Pan:          { closing: settings.cardClosing?.Pan          || 10, due: settings.cardDue?.Pan          || 17 },
+    Caixa:        { closing: settings.cardClosing?.Caixa        || 8,  due: settings.cardDue?.Caixa        || 18 },
+  });
+  const [saved, setSaved] = useState(false);
+
+  const save = () => {
+    const cardClosing = {}; const cardDue = {};
+    Object.entries(cards).forEach(([name, v]) => { cardClosing[name] = v.closing; cardDue[name] = v.due; });
+    onSave({ ...settings, cardClosing, cardDue });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const CARD_META_LOCAL = {
+    "Santander":"#CC2929","Nubank":"#8B5CF6","Nubank PJ":"#6D28D9",
+    "Will Bank":"#D97706","Mercado Pago":"#0EA5E9","Pan":"#1D4ED8","Caixa":"#0369A1",
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:18, maxWidth:640 }}>
+
+      {/* User info */}
+      <div className="card" style={{ padding:"18px 20px" }}>
+        <p style={{ fontWeight:700, fontSize:13, color:"#1E293B", marginBottom:14 }}>Conta</p>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ width:40, height:40, borderRadius:"50%", background:ACCENT, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize:14, fontWeight:600, color:"#1E293B" }}>{user?.email}</p>
+              <p style={{ fontSize:11, color:"#94A3B8" }}>Conta ativa</p>
+            </div>
+          </div>
+          <button onClick={onSignOut} style={{ fontSize:13, padding:"8px 18px", borderRadius:8, border:"1px solid #FECACA", background:"white", color:"#DC2626", cursor:"pointer", fontFamily:"inherit", fontWeight:500, transition:"background 0.15s" }}
+            onMouseEnter={e => e.currentTarget.style.background="#FEF2F2"}
+            onMouseLeave={e => e.currentTarget.style.background="white"}>
+            Sair
+          </button>
+        </div>
+      </div>
+
+      {/* Card settings */}
+      <div className="card" style={{ padding:"18px 20px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+          <div>
+            <p style={{ fontWeight:700, fontSize:13, color:"#1E293B" }}>Datas dos cartões</p>
+            <p style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Configure o fechamento e vencimento de cada cartão. Usado para calcular em qual fatura cada compra cai.</p>
+          </div>
+          <button onClick={save} className="btn-primary" style={{ flexShrink:0 }}>
+            {saved ? "✓ Salvo!" : "Salvar"}
+          </button>
+        </div>
+
+        <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:12 }}>
+          {/* Header */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 140px 140px", gap:12, padding:"0 4px" }}>
+            <p className="section-label">Cartão</p>
+            <p className="section-label" style={{ textAlign:"center" }}>Dia fechamento</p>
+            <p className="section-label" style={{ textAlign:"center" }}>Dia vencimento</p>
+          </div>
+
+          {Object.entries(cards).map(([name, val]) => {
+            const color = CARD_META_LOCAL[name] || "#888";
+            return (
+              <div key={name} style={{ display:"grid", gridTemplateColumns:"1fr 140px 140px", gap:12, alignItems:"center", padding:"12px 14px", background:"#F8FAFC", borderRadius:10, border:"1px solid #F1F5F9" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ width:10, height:10, borderRadius:"50%", background:color, display:"inline-block" }} />
+                  <span style={{ fontSize:13, fontWeight:600, color:"#1E293B" }}>{name}</span>
+                </div>
+                <div style={{ textAlign:"center" }}>
+                  <input type="number" min="1" max="31" value={val.closing}
+                    onChange={e => setCards(prev => ({ ...prev, [name]: { ...prev[name], closing: parseInt(e.target.value)||1 } }))}
+                    style={{ width:80, textAlign:"center", fontSize:14, fontWeight:600, border:"1px solid #D1D9E6", borderRadius:7, padding:"6px", fontFamily:"inherit" }} />
+                </div>
+                <div style={{ textAlign:"center" }}>
+                  <input type="number" min="1" max="31" value={val.due}
+                    onChange={e => setCards(prev => ({ ...prev, [name]: { ...prev[name], due: parseInt(e.target.value)||1 } }))}
+                    style={{ width:80, textAlign:"center", fontSize:14, fontWeight:600, border:"1px solid #D1D9E6", borderRadius:7, padding:"6px", fontFamily:"inherit" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop:14, padding:"10px 14px", background:"#EFF6FF", borderRadius:8, border:"1px solid #BFDBFE" }}>
+          <p style={{ fontSize:12, color:"#1D4ED8" }}>
+            <strong>Como funciona:</strong> Se o fechamento é dia 2 e você comprou dia 3, a compra cai na fatura do mês seguinte. Se comprou antes do dia 2, cai na fatura deste mês.
+          </p>
+        </div>
       </div>
     </div>
   );
