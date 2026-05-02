@@ -67,26 +67,48 @@ const CARD_DUE = {
   "Will Bank": 15, "Mercado Pago": 12, "Caixa": 18, "Pan": 17,
 };
 
-// Returns YYYY-MM of the billing month (when bill is due) for a credit purchase
-function getBillingMonth(purchaseDateStr, cardName) {
-  if (!purchaseDateStr || !CARD_CLOSING[cardName]) return purchaseDateStr?.slice(0, 7);
+// Returns YYYY-MM of the billing month for a credit purchase
+function getBillingMonth(purchaseDateStr, cardName, userCards) {
+  if (!purchaseDateStr) return purchaseDateStr?.slice(0, 7);
   const d = new Date(purchaseDateStr + "T00:00:00");
-  const closingDay = CARD_CLOSING[cardName];
+  // Look up closing day from userCards first, then fallback
+  let closingDay = CARD_CLOSING[cardName] || 1;
+  if (userCards) {
+    const uc = userCards.find(c => c.name === cardName);
+    if (uc) closingDay = uc.closing;
+  }
   const purchaseDay = d.getDate();
-  // If purchase day > closing day → next month's bill
   const billingDate = new Date(d.getFullYear(), d.getMonth(), 1);
   if (purchaseDay > closingDay) billingDate.setMonth(billingDate.getMonth() + 1);
   return `${billingDate.getFullYear()}-${String(billingDate.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function getBillingLabel(purchaseDateStr, cardName) {
-  const bm = getBillingMonth(purchaseDateStr, cardName);
+function getBillingLabel(purchaseDateStr, cardName, userCards) {
+  const bm = getBillingMonth(purchaseDateStr, cardName, userCards);
   if (!bm) return null;
   const [y, m] = bm.split("-").map(Number);
   return `Fatura ${MONTH_PT[m - 1]}/${String(y).slice(2)}`;
 }
 
-const isCreditCard = (payment) => CREDIT_CARDS.includes(payment);
+const isCreditCard = (payment, userCards) => {
+  if (userCards && userCards.length > 0) return userCards.some(c => c.name === payment);
+  return CREDIT_CARDS.includes(payment);
+};
+
+// Get user's configured cards, falling back to defaults
+function getUserCards(settings) {
+  if (settings?.userCards && settings.userCards.length > 0) return settings.userCards;
+  return CREDIT_CARDS.map(name => ({
+    id: name, name,
+    color: CARD_META[name]?.color || "#888",
+    closing: CARD_CLOSING[name] || 1,
+    due: CARD_DUE[name] || 10,
+  }));
+}
+
+function isUserCard(payment, settings) {
+  return getUserCards(settings).some(c => c.name === payment);
+}
 
 const FIXED_PAYMENT_METHODS = ["Pix","Débito","Boleto","Dinheiro",...CREDIT_CARDS];
 const PAYMENT_METHODS = ["Dinheiro","Débito","Pix","Boleto",...CREDIT_CARDS,"Outro"];
@@ -308,9 +330,9 @@ export default function App({ user, onSignOut }) {
 
         <div style={{ flex: 1, padding:"22px 24px", overflowY:"auto" }}>
           {tab === "dashboard" && <Dashboard installments={installments} fixedExpenses={fixedExpenses} goals={goals} settings={settings} totalFixed={totalFixed} totalInst={totalInst} totalGoalsMonth={totalGoalsMonth} balance={balance} transactions={transactions} commitments={commitments} onSettingsChange={updSettings} onCommitmentsChange={updCommitments} />}
-          {tab === "lancamentos" && <LancamentosTab transactions={transactions} onChange={updTransactions} budgets={budgets} onBudgetsChange={updBudgets} />}
-          {tab === "installments" && <InstallmentsTab items={installments} onChange={updInst} />}
-          {tab === "fixed" && <FixedTab items={fixedExpenses} onChange={updFix} />}
+          {tab === "lancamentos" && <LancamentosTab transactions={transactions} onChange={updTransactions} budgets={budgets} onBudgetsChange={updBudgets} userCards={getUserCards(settings)} />}
+          {tab === "installments" && <InstallmentsTab items={installments} onChange={updInst} userCards={getUserCards(settings)} />}
+          {tab === "fixed" && <FixedTab items={fixedExpenses} onChange={updFix} userCards={getUserCards(settings)} />}
           {tab === "goals" && <GoalsTab items={goals} onChange={updGoals} />}
           {tab === "fluxo" && <FluxoMensalTab installments={installments} fixedExpenses={fixedExpenses} goals={goals} settings={settings} transactions={transactions} commitments={commitments || []} />}
           {tab === "projecao" && <ProjecaoAnualTab installments={installments} fixedExpenses={fixedExpenses} goals={goals} settings={settings} />}
@@ -381,12 +403,18 @@ function MetricCard({ label, value, sub, valueColor, icon }) {
   );
 }
 
-function CardBadge({ cardName }) {
+function CardBadge({ cardName, userCards }) {
   if (!cardName) return null;
-  const m = CARD_META[cardName] || { color:"#888", light:"#eee", text:"#555" };
+  let color = CARD_META[cardName]?.color || "#888";
+  let light = CARD_META[cardName]?.light || "#eee";
+  let text = CARD_META[cardName]?.text || "#555";
+  if (userCards) {
+    const uc = userCards.find(c => c.name === cardName);
+    if (uc) { color = uc.color; light = `${uc.color}18`; text = uc.color; }
+  }
   return (
-    <span className="badge" style={{ background: m.light, color: m.text, border:`1px solid ${m.color}33` }}>
-      <span style={{ width: 6, height: 6, borderRadius:"50%", background: m.color, display:"inline-block", flexShrink: 0 }} />
+    <span className="badge" style={{ background: light, color: text, border:`1px solid ${color}33` }}>
+      <span style={{ width: 6, height: 6, borderRadius:"50%", background: color, display:"inline-block", flexShrink: 0 }} />
       {cardName}
     </span>
   );
@@ -415,20 +443,20 @@ function Field({ label, children }) {
   );
 }
 
-function CardSelector({ value, onChange }) {
+function CardSelector({ value, onChange, userCards }) {
+  const cards = userCards && userCards.length > 0 ? userCards : CREDIT_CARDS.map(name => ({ id:name, name, color: CARD_META[name]?.color||"#888" }));
   return (
     <div style={{ marginBottom: 14 }}>
       <label className="field-label">Cartão de crédito</label>
       <div style={{ display:"flex", flexWrap:"wrap", gap: 7 }}>
-        {CREDIT_CARDS.map(c => {
-          const m = CARD_META[c];
-          const sel = value === c;
+        {cards.map(c => {
+          const sel = value === c.name;
           return (
-            <div key={c} onClick={() => onChange(sel ? "" : c)}
+            <div key={c.id} onClick={() => onChange(sel ? "" : c.name)}
               style={{ cursor:"pointer", padding:"5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600, transition:"all 0.15s",
-                background: sel ? m.color : "#F8FAFC", color: sel ? "white" : "#64748B",
-                border: sel ? `1.5px solid ${m.color}` : "1px solid #E2E8F4" }}>
-              {c}
+                background: sel ? c.color : "#F8FAFC", color: sel ? "white" : "#64748B",
+                border: sel ? `1.5px solid ${c.color}` : "1px solid #E2E8F4" }}>
+              {c.name}
             </div>
           );
         })}
@@ -940,7 +968,7 @@ function CommitmentModal({ onSave, onClose, commitments, onDelete }) {
 
 // ─── PARCELAMENTOS ────────────────────────────────────────────────────────────
 
-function InstallmentsTab({ items, onChange }) {
+function InstallmentsTab({ items, onChange, userCards }) {
   const [modal, setModal] = useState(null);
   const [editItem, setEditItem] = useState(null);
   const [cardFilter, setCardFilter] = useState("Todos");
@@ -1145,7 +1173,7 @@ function InstallmentsTab({ items, onChange }) {
               {CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
           </Field>
-          <CardSelector value={editItem.creditCard || ""} onChange={v => {
+          <CardSelector value={editItem.creditCard || ""} userCards={userCards} onChange={v => {
             const autoPaid = editItem.purchaseDate && editItem.totalInstallments
               ? calcAutoPaid(editItem.purchaseDate, v, editItem.totalInstallments)
               : editItem.paidInstallments;
@@ -1184,7 +1212,7 @@ function InstallmentsTab({ items, onChange }) {
 
 // ─── DESPESAS FIXAS ───────────────────────────────────────────────────────────
 
-function FixedTab({ items, onChange }) {
+function FixedTab({ items, onChange, userCards }) {
   const [modal, setModal] = useState(null);
   const [editItem, setEditItem] = useState(null);
 
@@ -1439,7 +1467,7 @@ function getEffectiveMonth(tx) {
   return tx.date.slice(0, 7);
 }
 
-function LancamentosTab({ transactions, onChange, budgets, onBudgetsChange }) {
+function LancamentosTab({ transactions, onChange, budgets, onBudgetsChange, userCards }) {
   const now = new Date();
   const [selMonth, setSelMonth] = useState(monthKey(now));
   const [viewMode, setViewMode] = useState("compra"); // "compra" | "fatura"
@@ -2474,32 +2502,45 @@ function InvCard({ item, color, onEdit, onRemove, onDeposit }) {
 // ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
 
 function ConfiguracoesTab({ settings, onSave, user, onSignOut }) {
-  const [cards, setCards] = useState({
-    Santander:    { closing: settings.cardClosing?.Santander    || 1,  due: settings.cardDue?.Santander    || 8  },
-    Nubank:       { closing: settings.cardClosing?.Nubank       || 2,  due: settings.cardDue?.Nubank       || 9  },
-    "Nubank PJ":  { closing: settings.cardClosing?.["Nubank PJ"]|| 2,  due: settings.cardDue?.["Nubank PJ"]|| 9  },
-    "Will Bank":  { closing: settings.cardClosing?.["Will Bank"]|| 8,  due: settings.cardDue?.["Will Bank"]|| 15 },
-    "Mercado Pago":{ closing: settings.cardClosing?.["Mercado Pago"]||5, due: settings.cardDue?.["Mercado Pago"]||12},
-    Pan:          { closing: settings.cardClosing?.Pan          || 10, due: settings.cardDue?.Pan          || 17 },
-    Caixa:        { closing: settings.cardClosing?.Caixa        || 8,  due: settings.cardDue?.Caixa        || 18 },
+  const DEFAULT_CARDS = [
+    { id:"c1", name:"Santander",    color:"#CC2929", closing:1,  due:8  },
+    { id:"c2", name:"Nubank",       color:"#8B5CF6", closing:2,  due:9  },
+    { id:"c3", name:"Nubank PJ",    color:"#6D28D9", closing:2,  due:9  },
+    { id:"c4", name:"Will Bank",    color:"#D97706", closing:8,  due:15 },
+    { id:"c5", name:"Mercado Pago", color:"#0EA5E9", closing:5,  due:12 },
+    { id:"c6", name:"Pan",          color:"#1D4ED8", closing:10, due:17 },
+    { id:"c7", name:"Caixa",        color:"#0369A1", closing:8,  due:18 },
+  ];
+
+  const COLORS = ["#CC2929","#8B5CF6","#6D28D9","#D97706","#0EA5E9","#1D4ED8","#0369A1","#16A34A","#D84FD8","#F97316","#94A3B8"];
+
+  const [cards, setCards] = useState(() => {
+    if (settings.userCards && settings.userCards.length > 0) return settings.userCards;
+    return DEFAULT_CARDS;
   });
   const [saved, setSaved] = useState(false);
 
   const save = () => {
-    const cardClosing = {}; const cardDue = {};
-    Object.entries(cards).forEach(([name, v]) => { cardClosing[name] = v.closing; cardDue[name] = v.due; });
-    onSave({ ...settings, cardClosing, cardDue });
+    onSave({ ...settings, userCards: cards });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const CARD_META_LOCAL = {
-    "Santander":"#CC2929","Nubank":"#8B5CF6","Nubank PJ":"#6D28D9",
-    "Will Bank":"#D97706","Mercado Pago":"#0EA5E9","Pan":"#1D4ED8","Caixa":"#0369A1",
+  const updateCard = (id, field, value) => {
+    setCards(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  };
+
+  const addCard = () => {
+    const newId = `c${Date.now()}`;
+    setCards(prev => [...prev, { id: newId, name:"Novo cartão", color:"#94A3B8", closing:1, due:10 }]);
+  };
+
+  const removeCard = (id) => {
+    setCards(prev => prev.filter(c => c.id !== id));
   };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:18, maxWidth:640 }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:18, maxWidth:680 }}>
 
       {/* User info */}
       <div className="card" style={{ padding:"18px 20px" }}>
@@ -2514,9 +2555,7 @@ function ConfiguracoesTab({ settings, onSave, user, onSignOut }) {
               <p style={{ fontSize:11, color:"#94A3B8" }}>Conta ativa</p>
             </div>
           </div>
-          <button onClick={onSignOut} style={{ fontSize:13, padding:"8px 18px", borderRadius:8, border:"1px solid #FECACA", background:"white", color:"#DC2626", cursor:"pointer", fontFamily:"inherit", fontWeight:500, transition:"background 0.15s" }}
-            onMouseEnter={e => e.currentTarget.style.background="#FEF2F2"}
-            onMouseLeave={e => e.currentTarget.style.background="white"}>
+          <button onClick={onSignOut} style={{ fontSize:13, padding:"8px 18px", borderRadius:8, border:"1px solid #FECACA", background:"white", color:"#DC2626", cursor:"pointer", fontFamily:"inherit", fontWeight:500 }}>
             Sair
           </button>
         </div>
@@ -2524,45 +2563,69 @@ function ConfiguracoesTab({ settings, onSave, user, onSignOut }) {
 
       {/* Card settings */}
       <div className="card" style={{ padding:"18px 20px" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
           <div>
-            <p style={{ fontWeight:700, fontSize:13, color:"#1E293B" }}>Datas dos cartões</p>
-            <p style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Configure o fechamento e vencimento de cada cartão. Usado para calcular em qual fatura cada compra cai.</p>
+            <p style={{ fontWeight:700, fontSize:13, color:"#1E293B" }}>Meus cartões</p>
+            <p style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Edite nome, cor, fechamento e vencimento de cada cartão.</p>
           </div>
-          <button onClick={save} className="btn-primary" style={{ flexShrink:0 }}>
-            {saved ? "✓ Salvo!" : "Salvar"}
-          </button>
+          <div style={{ display:"flex", gap:8 }}>
+            <button className="btn-ghost" onClick={addCard} style={{ fontSize:12 }}>+ Adicionar</button>
+            <button className="btn-primary" onClick={save}>{saved ? "✓ Salvo!" : "Salvar"}</button>
+          </div>
         </div>
 
-        <div style={{ marginTop:16, display:"flex", flexDirection:"column", gap:12 }}>
-          {/* Header */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 140px 140px", gap:12, padding:"0 4px" }}>
-            <p className="section-label">Cartão</p>
-            <p className="section-label" style={{ textAlign:"center" }}>Dia fechamento</p>
-            <p className="section-label" style={{ textAlign:"center" }}>Dia vencimento</p>
-          </div>
+        {/* Header */}
+        <div style={{ display:"grid", gridTemplateColumns:"30px 1fr 90px 100px 110px 36px", gap:8, padding:"0 4px 8px", borderBottom:"1px solid #F1F5F9", marginBottom:8 }}>
+          <div />
+          <p className="section-label">Nome do cartão</p>
+          <p className="section-label" style={{ textAlign:"center" }}>Cor</p>
+          <p className="section-label" style={{ textAlign:"center" }}>Fechamento</p>
+          <p className="section-label" style={{ textAlign:"center" }}>Vencimento</p>
+          <div />
+        </div>
 
-          {Object.entries(cards).map(([name, val]) => {
-            const color = CARD_META_LOCAL[name] || "#888";
-            return (
-              <div key={name} style={{ display:"grid", gridTemplateColumns:"1fr 140px 140px", gap:12, alignItems:"center", padding:"12px 14px", background:"#F8FAFC", borderRadius:10, border:"1px solid #F1F5F9" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <span style={{ width:10, height:10, borderRadius:"50%", background:color, display:"inline-block" }} />
-                  <span style={{ fontSize:13, fontWeight:600, color:"#1E293B" }}>{name}</span>
-                </div>
-                <div style={{ textAlign:"center" }}>
-                  <input type="number" min="1" max="31" value={val.closing}
-                    onChange={e => setCards(prev => ({ ...prev, [name]: { ...prev[name], closing: parseInt(e.target.value)||1 } }))}
-                    style={{ width:80, textAlign:"center", fontSize:14, fontWeight:600, border:"1px solid #D1D9E6", borderRadius:7, padding:"6px", fontFamily:"inherit" }} />
-                </div>
-                <div style={{ textAlign:"center" }}>
-                  <input type="number" min="1" max="31" value={val.due}
-                    onChange={e => setCards(prev => ({ ...prev, [name]: { ...prev[name], due: parseInt(e.target.value)||1 } }))}
-                    style={{ width:80, textAlign:"center", fontSize:14, fontWeight:600, border:"1px solid #D1D9E6", borderRadius:7, padding:"6px", fontFamily:"inherit" }} />
-                </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {cards.map((card) => (
+            <div key={card.id} style={{ display:"grid", gridTemplateColumns:"30px 1fr 90px 100px 110px 36px", gap:8, alignItems:"center", padding:"10px 12px", background:"#F8FAFC", borderRadius:10, border:"1px solid #F1F5F9" }}>
+              {/* Color dot */}
+              <div style={{ display:"flex", justifyContent:"center" }}>
+                <span style={{ width:14, height:14, borderRadius:"50%", background:card.color, display:"inline-block", flexShrink:0 }} />
               </div>
-            );
-          })}
+
+              {/* Name */}
+              <input value={card.name}
+                onChange={e => updateCard(card.id, "name", e.target.value)}
+                style={{ fontSize:13, fontWeight:600, border:"1px solid #D1D9E6", borderRadius:7, padding:"6px 10px", fontFamily:"inherit", background:"white" }} />
+
+              {/* Color picker */}
+              <div style={{ display:"flex", flexWrap:"wrap", gap:4, justifyContent:"center" }}>
+                {COLORS.map(c => (
+                  <div key={c} onClick={() => updateCard(card.id, "color", c)}
+                    style={{ width:16, height:16, borderRadius:"50%", background:c, cursor:"pointer", border: card.color === c ? "2px solid #1E293B" : "2px solid transparent", flexShrink:0 }} />
+                ))}
+              </div>
+
+              {/* Closing day */}
+              <div style={{ textAlign:"center" }}>
+                <input type="number" min="1" max="31" value={card.closing}
+                  onChange={e => updateCard(card.id, "closing", parseInt(e.target.value)||1)}
+                  style={{ width:70, textAlign:"center", fontSize:14, fontWeight:600, border:"1px solid #D1D9E6", borderRadius:7, padding:"6px", fontFamily:"inherit", background:"white" }} />
+              </div>
+
+              {/* Due day */}
+              <div style={{ textAlign:"center" }}>
+                <input type="number" min="1" max="31" value={card.due}
+                  onChange={e => updateCard(card.id, "due", parseInt(e.target.value)||1)}
+                  style={{ width:70, textAlign:"center", fontSize:14, fontWeight:600, border:"1px solid #D1D9E6", borderRadius:7, padding:"6px", fontFamily:"inherit", background:"white" }} />
+              </div>
+
+              {/* Remove */}
+              <button onClick={() => removeCard(card.id)}
+                style={{ width:28, height:28, borderRadius:6, border:"1px solid #FECACA", background:"white", color:"#DC2626", cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
 
         <div style={{ marginTop:14, padding:"10px 14px", background:"#EFF6FF", borderRadius:8, border:"1px solid #BFDBFE" }}>
